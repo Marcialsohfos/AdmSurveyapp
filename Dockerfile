@@ -24,4 +24,4 @@ RUN mkdir -p uploads converted static
 EXPOSE 10000
 
 # Commande de démarrage avec variable d'environnement
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:10000", "--timeout", "120", "--access-logfile", "-"]
+CMD gunicorn app:app --bind 0.0.0.0:${PORT:-10000} --timeout 120 --access-logfile -
