@@ -708,86 +708,39 @@ class OCRProcessor:
             return self._extract_text_from_image(filepath)
     
     def _extract_text_from_image(self, image_path) -> str:
-        """Extraction améliorée avec logs détaillés"""
+        """Extraction OCR avec prétraitement et configuration améliorés"""
         try:
-            print("🔍 Début extraction OCR...")
-            
             # Charger l'image
             if isinstance(image_path, str):
                 image = cv2.imread(image_path)
-                if image is None:
-                    print("❌ Impossible de charger l'image")
-                    return "Erreur: Impossible de charger l'image"
             else:
                 image = cv2.cvtColor(np.array(image_path), cv2.COLOR_RGB2BGR)
-            
-            print(f"📐 Dimensions image: {image.shape}")
-            
-            # Vérifier la qualité de l'image
-            if len(image.shape) == 3:
-                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = image
-                
-            # Calculer le contraste moyen
-            contrast = np.std(gray)
-            print(f"📊 Contraste image: {contrast}")
-            
-            if contrast < 25:
-                print("⚠️ Contraste faible - application de corrections...")
-                # Améliorer le contraste
-                gray = cv2.equalizeHist(gray)
-            
-            # Prétraitement
-            processed_image = self._preprocess_image_enhanced(image)
-            
-            # Essayer différents modes PSM (Page Segmentation Mode)
-            psm_modes = {
-                '6': 'Uniform block of text',
-                '3': 'Fully automatic page segmentation',
-                '4': 'Single column of text',
-                '8': 'Single word',
-                '11': 'Sparse text'
-            }
-            
-            best_text = ""
-            best_config = ""
-            
-            for psm, description in psm_modes.items():
-                try:
-                    config = f'--oem 3 --psm {psm} -l fra+eng'
-                    text = pytesseract.image_to_string(processed_image, config=config)
-                    char_count = len(text.strip())
-                    
-                    print(f"🔧 PSM {psm} ({description}): {char_count} caractères")
-                    
-                    if char_count > len(best_text.strip()):
-                        best_text = text
-                        best_config = config
-                        
-                except Exception as e:
-                    print(f"⚠️ Erreur PSM {psm}: {e}")
-                    continue
-            
-            print(f"✅ Meilleure config: {best_config}")
-            print(f"✅ Texte extrait: {len(best_text)} caractères")
-            
-            if best_text.strip():
-                return best_text
-            else:
-                # Dernier recours: image originale sans prétraitement
-                try:
-                    fallback_text = pytesseract.image_to_string(image, config='--oem 3 --psm 6 -l fra+eng')
-                    print(f"🔄 Fallback: {len(fallback_text.strip())} caractères")
-                    return fallback_text if fallback_text.strip() else "Aucun texte détecté dans l'image"
-                except Exception as e:
-                    print(f"❌ Erreur fallback: {e}")
-                    return f"Erreur OCR: {e}"
-                    
-        except Exception as e:
-            print(f"❌ Erreur extraction OCR: {e}")
-            return f"Erreur lors de l'extraction OCR: {e}"
 
+            # 1. PRÉTRAITEMENT DE L'IMAGE
+            # Conversion en niveaux de gris
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            
+            # Réduction du bruit
+            denoised = cv2.medianBlur(gray, 3)
+            
+            # Seuillage automatique (Otsu)
+            _, binary_image = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # 2. CONFIGURATION ET OCR
+            # Essayer différents modes de segmentation
+            configs = ['--psm 6', '--psm 11', '--psm 3']
+            best_text = ""
+            for config in configs:
+                current_text = pytesseract.image_to_string(binary_image, config=f'{config} -l fra+eng')
+                if len(current_text.strip()) > len(best_text.strip()):
+                    best_text = current_text
+                    print(f"✅ Texte extrait avec {config}: {len(current_text)} caractères")
+
+            return best_text if best_text.strip() else "Aucun texte détecté dans l'image après prétraitement."
+
+        except Exception as e:
+            return f"Erreur lors de l'extraction OCR: {e}"
+    
     def _preprocess_image_enhanced(self, image):
         """Prétraitement amélioré pour l'OCR"""
         try:
@@ -917,7 +870,7 @@ class OCRProcessor:
         if len(line) > 150:
             return False
         
-        # Titres en majuscules
+# Titres en majuscules
         if line.isupper() and len(line) > 5:
             return True
         
