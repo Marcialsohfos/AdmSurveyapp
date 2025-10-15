@@ -177,6 +177,24 @@ def debug_info():
         info["tesseract_check"] = f"Erreur: {e}"
     
     return jsonify(info)
+@app.route('/test-docker')
+def test_docker():
+    import subprocess
+    try:
+        # Test Tesseract
+        tesseract_result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
+        # Test des dossiers
+        folders = ['uploads', 'converted', 'static']
+        folder_status = {folder: '✅ Existe' if os.path.exists(folder) else '❌ Manquant' for folder in folders}
+        
+        return jsonify({
+            'status': 'Docker OK',
+            'tesseract': tesseract_result.stdout if tesseract_result.stdout else tesseract_result.stderr,
+            'folders': folder_status,
+            'port': os.environ.get('PORT', 'Non défini')
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
