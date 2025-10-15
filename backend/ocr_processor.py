@@ -708,41 +708,73 @@ class OCRProcessor:
             return self._extract_text_from_image(filepath)
     
     def _extract_text_from_image(self, image_path) -> str:
-        """Extraction OCR avec prétraitement et configuration améliorés"""
+        """Extrait le texte d'une image avec prétraitement amélioré"""
         try:
             # Charger l'image
             if isinstance(image_path, str):
                 image = cv2.imread(image_path)
+                if image is None:
+                    return "Erreur: Impossible de charger l'image"
             else:
                 image = cv2.cvtColor(np.array(image_path), cv2.COLOR_RGB2BGR)
-
-            # 1. PRÉTRAITEMENT DE L'IMAGE
-            # Conversion en niveaux de gris
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            # Réduction du bruit
-            denoised = cv2.medianBlur(gray, 3)
+            print(f"📐 Dimensions image: {image.shape}")
             
-            # Seuillage automatique (Otsu)
-            _, binary_image = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # Redimensionner si trop petite (au moins 300px de hauteur)
+            height, width = image.shape[:2]
+            if height < 300:
+                scale_factor = 300 / height
+                new_width = int(width * scale_factor)
+                image = cv2.resize(image, (new_width, 300), interpolation=cv2.INTER_CUBIC)
+                print(f"🔄 Image redimensionnée: {image.shape}")
             
-            # 2. CONFIGURATION ET OCR
-            # Essayer différents modes de segmentation
-            configs = ['--psm 6', '--psm 11', '--psm 3']
+            # Prétraitement amélioré
+            processed_image = self._preprocess_image_enhanced(image)
+            
+            # Configurations Tesseract à essayer
+            configs = [
+                '--oem 3 --psm 6 -l fra+eng',  # Par défaut
+                '--oem 3 --psm 3 -l fra+eng',  # Page entière sans segmentation
+                '--oem 3 --psm 4 -l fra+eng',  # Colonne unique de texte
+                '--oem 3 --psm 8 -l fra+eng',  # Mot unique
+                '--oem 3 --psm 11 -l fra+eng', # Sparse text
+            ]
+            
             best_text = ""
+            best_config = ""
+            
             for config in configs:
-                current_text = pytesseract.image_to_string(binary_image, config=f'{config} -l fra+eng')
-                if len(current_text.strip()) > len(best_text.strip()):
-                    best_text = current_text
-                    print(f"✅ Texte extrait avec {config}: {len(current_text)} caractères")
-
-            return best_text if best_text.strip() else "Aucun texte détecté dans l'image après prétraitement."
-
+                try:
+                    text = pytesseract.image_to_string(processed_image, config=config)
+                    print(f"🔍 Config {config}: {len(text.strip())} caractères")
+                    
+                    if len(text.strip()) > len(best_text.strip()):
+                        best_text = text
+                        best_config = config
+                except Exception as e:
+                    print(f"⚠️ Erreur config {config}: {e}")
+                    continue
+            
+            print(f"✅ Meilleure config: {best_config}")
+            print(f"✅ Texte extrait: {len(best_text)} caractères")
+            
+            if best_text.strip():
+                return best_text
+            else:
+                # Essayer avec l'image originale en dernier recours
+                try:
+                    fallback_text = pytesseract.image_to_string(image, config='--oem 3 --psm 6 -l fra+eng')
+                    print(f"🔄 Fallback texte: {len(fallback_text.strip())} caractères")
+                    return fallback_text
+                except:
+                    return "Aucun texte détecté dans l'image"
+                
         except Exception as e:
+            print(f"❌ Erreur extraction OCR: {e}")
             return f"Erreur lors de l'extraction OCR: {e}"
     
     def _preprocess_image_enhanced(self, image):
-        """Prétraitement amélioré pour l'OCR"""
+        """Améliore la qualité de l'image pour l'OCR avec plusieurs techniques"""
         try:
             # Convertir en niveaux de gris
             if len(image.shape) == 3:
@@ -750,59 +782,45 @@ class OCRProcessor:
             else:
                 gray = image
             
-            # 1. Débruitage
+            # Dénoniser l'image
             denoised = cv2.medianBlur(gray, 3)
             
-            # 2. Amélioration du contraste (CLAHE)
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-            contrast_enhanced = clahe.apply(denoised)
-            
-            # 3. Seuillage adaptatif multiple
-            # Méthode 1: Gaussian
+            # Plusieurs techniques de seuillage
+            # 1. Seuillage adaptatif gaussien
             thresh1 = cv2.adaptiveThreshold(
-                contrast_enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                cv2.THRESH_BINARY, 15, 5
+                denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                cv2.THRESH_BINARY, 11, 2
             )
             
-            # Méthode 2: Mean
-            thresh2 = cv2.adaptiveThreshold(
-                contrast_enhanced, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                cv2.THRESH_BINARY, 15, 5
-            )
+            # 2. Seuillage d'Otsu
+            _, thresh2 = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # Méthode 3: Otsu
+            # 3. Amélioration du contraste
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            contrast_enhanced = clahe.apply(denoised)
             _, thresh3 = cv2.threshold(contrast_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # 4. Test rapide pour trouver la meilleure méthode
-            images_to_test = [
-                ('gaussian', thresh1),
-                ('mean', thresh2), 
-                ('otsu', thresh3),
-                ('original', gray)
-            ]
+            # Essayer les différentes versions et choisir la meilleure
+            images_to_try = [thresh1, thresh2, thresh3, denoised]
             
-            best_image = gray
-            best_score = 0
+            # Tester rapidement chaque version
+            best_image = thresh1
+            best_text_length = 0
             
-            for name, img in images_to_test:
+            for img in images_to_try:
                 try:
-                    # Test OCR rapide
-                    text = pytesseract.image_to_string(img, config='--psm 6 -l fra')
-                    score = len(text.strip())
-                    
-                    if score > best_score:
-                        best_score = score
+                    text = pytesseract.image_to_string(img, config='--oem 3 --psm 6 -l fra+eng')
+                    if len(text.strip()) > best_text_length:
+                        best_text_length = len(text.strip())
                         best_image = img
-                        print(f"✅ Meilleure méthode: {name} - {score} caractères")
-                        
-                except Exception as e:
-                    print(f"⚠️ Erreur méthode {name}: {e}")
+                except:
                     continue
             
+            print(f"✅ Texte détecté: {best_text_length} caractères")
             return best_image
             
         except Exception as e:
-            print(f"❌ Erreur prétraitement: {e}")
+            print(f"❌ Erreur prétraitement image: {e}")
             return image
 
     def _preprocess_image(self, image):
@@ -870,7 +888,7 @@ class OCRProcessor:
         if len(line) > 150:
             return False
         
-# Titres en majuscules
+        # Titres en majuscules
         if line.isupper() and len(line) > 5:
             return True
         
