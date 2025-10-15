@@ -195,9 +195,38 @@ def test_docker():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+@app.route('/test-tesseract')
+def test_tesseract():
+    """Test complet de l'installation Tesseract"""
+    try:
+        # Test version
+        version_result = subprocess.run(['tesseract', '--version'], 
+                                      capture_output=True, text=True)
+        
+        # Test langues
+        langs_result = subprocess.run(['tesseract', '--list-langs'], 
+                                    capture_output=True, text=True)
+        
+        # Test OCR simple
+        test_image = Image.new('RGB', (400, 200), color='white')
+        test_draw = ImageDraw.Draw(test_image)
+        test_draw.text((50, 80), "Test OCR Français 123", fill='black')
+        
+        ocr_text = pytesseract.image_to_string(test_image, lang='fra')
+        
+        return jsonify({
+            'tesseract_installed': version_result.returncode == 0,
+            'version': version_result.stdout,
+            'languages': langs_result.stdout,
+            'ocr_test': ocr_text,
+            'tesseract_path': pytesseract.pytesseract.tesseract_cmd
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))  # ← 10000 au lieu de 5000
+    port = int(os.environ.get("PORT", 5000))  
     # Création des dossiers nécessaires
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs('converted', exist_ok=True)
