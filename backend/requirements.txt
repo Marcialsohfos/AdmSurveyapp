@@ -14,3 +14,4 @@ geopandas==0.13.2
 shapely==2.0.1
 gunicorn==21.2.0
 PyPDF2==3.0.1
+poppler-utils
