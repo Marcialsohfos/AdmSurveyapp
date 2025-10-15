@@ -263,6 +263,22 @@ def debug_upload():
                 os.remove(filepath)
         except:
             pass
+@app.route('/check-tesseract')
+def check_tesseract():
+    import subprocess
+    try:
+        # Test installation Tesseract
+        version = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
+        langs = subprocess.run(['tesseract', '--list-langs'], capture_output=True, text=True)
+        
+        return jsonify({
+            'tesseract_installed': version.returncode == 0,
+            'version': version.stdout if version.stdout else version.stderr,
+            'languages': langs.stdout if langs.stdout else langs.stderr,
+            'path': subprocess.run(['which', 'tesseract'], capture_output=True, text=True).stdout
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
