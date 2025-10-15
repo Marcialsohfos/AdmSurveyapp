@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SourceAdApp - Numérisation de données administratives</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SourceAdApp</h1>
+            <p>Numérisation intelligente des données administratives</p>
+            <p>Power by Lab_Math & Label CIE</p>
+        </header>
+
+        <main>
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <i class="upload-icon">📁</i>
+                        <h3>Déposez vos fichiers ici</h3>
+                        <p>Formats supportés: PNG, JPG, JPEG, PDF, TIFF</p>
+                        <button class="browse-btn" onclick="document.getElementById('fileInput').click()">
+                            Parcourir les fichiers
+                        </button>
+                    </div>
+                    <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.pdf,.tiff" hidden>
+                </div>
+            </div>
+
+            <div class="configuration-section">
+                <div class="form-group">
+    <label for="dataType">Type de données:</label>
+    <select id="dataType">
+        <option value="auto">🔍 Détection automatique</option>
+        <option value="budget">💰 Budget d'investissement</option>
+        <option value="laboratoire">🔬 Données Laboratoires</option>
+        <option value="voirie">🛣️ Voirie et Réseaux Divers</option>
+        <option value="formation">📚 Documents de formation</option>
+        <option value="legal">⚖️ Documents juridiques</option>
+        <option value="administrative">📋 Documents administratifs</option>
+    </select>
+</div>
+
+
+                <div class="form-group">
+                    <label for="outputFormat">Format de sortie:</label>
+                    <select id="outputFormat">
+                        <option value="csv">CSV</option>
+                        <option value="xlsx">Excel (.xlsx)</option>
+                        <option value="dta">Stata (.dta)</option>
+                        <option value="sav">SPSS (.sav)</option>
+                        <option value="shp">Shapefile (.shp)</option>
+                        <option value="xml">XML</option>
+                        <option value="html">HTML</option>
+                        <option value="docx"> Word (.docx) </option>
+                        <option value="txt">Texte (.txt)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="action-section">
+                <button id="processBtn" class="process-btn" onclick="processFile()">
+                    Traiter le fichier
+                </button>
+            </div>
+
+            <div id="results" class="results-section" style="display: none;">
+                <h3>Résultats de l'extraction</h3>
+                <div id="extractedData" class="extracted-data"></div>
+                <button id="downloadBtn" class="download-btn" onclick="downloadFile()">
+                    Télécharger les données
+                </button>
+            </div>
+
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Traitement en cours...</p>
+            </div>
+
+            <div id="error" class="error" style="display: none;"></div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
