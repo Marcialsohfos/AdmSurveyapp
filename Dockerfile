@@ -1,27 +1,26 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
 
-# Installation des dépendances système
+# Installer les dépendances système incluant Tesseract
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-fra \
+    tesseract-ocr-eng \
     poppler-utils \
-    && rm -rf /var/lib/apt/lists/* \
-    && tesseract --version
+    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
 
+# Définir le répertoire de travail
 WORKDIR /app
 
-# Copie et installation des dépendances Python
+# Copier les requirements et installer les dépendances Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copie de l'application
+# Copier le code de l'application
 COPY . .
 
-# Création des dossiers
-RUN mkdir -p uploads converted static
+# Exposer le port
+EXPOSE 5000
 
-# Exposition du port
-EXPOSE 10000
-
-# Commande de démarrage avec variable d'environnement
-CMD gunicorn app:app --bind 0.0.0.0:${PORT:-10000} --timeout 120 --access-logfile -
+# Commande de démarrage
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
