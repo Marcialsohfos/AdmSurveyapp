@@ -6,33 +6,28 @@ import pdf2image
 import re
 from typing import Dict, List, Any, Optional
 
+import subprocess
+import os
+
 class OCRProcessor:
- def __init__(self):
-    # Configuration Tesseract pour Render/Linux
-    try:
-        # Sur Render, Tesseract est généralement dans le PATH
-        # Teste si tesseract est disponible
-        import subprocess
-        result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
-        if result.stdout:
-            print(f"✅ Tesseract trouvé: {result.stdout.strip()}")
-        else:
-            print("⚠️ Tesseract non trouvé dans le PATH")
-            # Essaye les chemins communs Linux
-            possible_paths = [
-                '/usr/bin/tesseract',
-                '/usr/local/bin/tesseract',
-                '/app/.apt/usr/bin/tesseract'
-            ]
-            for path in possible_paths:
-                import os
-                if os.path.exists(path):
-                    pytesseract.pytesseract.tesseract_cmd = path
-                    print(f"✅ Tesseract configuré: {path}")
-                    break
-    except Exception as e:
-        print(f"⚠️ Configuration Tesseract échouée: {e}")
-        # Continue sans configuration spécifique
+    def __init__(self):
+        # Vérification Tesseract pour Render
+        try:
+            # Test installation Tesseract
+            result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
+            if not result.stdout:
+                print("❌ Tesseract non trouvé - tentative d'installation...")
+                # Installation pour Render (environnement Ubuntu)
+                subprocess.run(['sudo', 'apt-get', 'update'], check=False)
+                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'tesseract-ocr', 'tesseract-ocr-fra', 'poppler-utils'], check=False)
+            else:
+                print(f"✅ Tesseract trouvé: {result.stdout.strip()}")
+                
+            # Configuration du chemin
+            pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+            
+        except Exception as e:
+            print(f"⚠️ Erreur configuration Tesseract: {e}")
         
         # Parsers spécialisés par type de contenu
         self.specialized_parsers = {
