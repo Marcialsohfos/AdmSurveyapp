@@ -14,7 +14,15 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'tiff'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
+# ✅ CRÉATION DES DOSSIERS AU DÉMARRAGE
+def create_required_folders():
+    required_folders = [UPLOAD_FOLDER, 'converted', 'static']
+    for folder in required_folders:
+        os.makedirs(folder, exist_ok=True)
+        print(f"✅ Dossier créé/vérifié: {folder}")
+
 # Initialisation des processeurs
+create_required_folders()  
 ocr_processor = OCRProcessor()
 data_converter = DataConverter()
 
