@@ -4,53 +4,182 @@ import cv2
 import numpy as np
 import pdf2image
 import re
-from typing import Dict, List, Any, Optional
-
 import subprocess
 import os
+from typing import Dict, List, Any
 
 class OCRProcessor:
     def __init__(self):
-        # Vérification Tesseract pour Render
+        self._verify_tesseract_installation()
+        self._configure_tesseract_path()
+        
+    def _verify_tesseract_installation(self):
+        """Vérifie et installe Tesseract si nécessaire"""
         try:
-            # Test installation Tesseract
-            result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
-            if not result.stdout:
-                print("❌ Tesseract non trouvé - tentative d'installation...")
-                # Installation pour Render (environnement Ubuntu)
-                subprocess.run(['sudo', 'apt-get', 'update'], check=False)
-                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'tesseract-ocr', 'tesseract-ocr-fra', 'poppler-utils'], check=False)
+            # Vérifier si Tesseract est installé
+            result = subprocess.run(['which', 'tesseract'], 
+                                  capture_output=True, text=True, timeout=10)
+            
+            if result.returncode != 0:
+                print("❌ Tesseract non trouvé, tentative d'installation...")
+                self._install_tesseract()
             else:
                 print(f"✅ Tesseract trouvé: {result.stdout.strip()}")
                 
-            # Configuration du chemin
-            pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+            # Vérifier les langues disponibles
+            lang_result = subprocess.run(['tesseract', '--list-langs'], 
+                                       capture_output=True, text=True, timeout=10)
+            print(f"📚 Langues Tesseract disponibles: {lang_result.stdout}")
+            
+        except subprocess.TimeoutExpired:
+            print("⚠️ Timeout lors de la vérification Tesseract")
+        except Exception as e:
+            print(f"⚠️ Erreur vérification Tesseract: {e}")
+    
+    def _install_tesseract(self):
+        """Tente d'installer Tesseract (pour environnement Linux)"""
+        try:
+            commands = [
+                ['apt-get', 'update'],
+                ['apt-get', 'install', '-y', 'tesseract-ocr'],
+                ['apt-get', 'install', '-y', 'tesseract-ocr-fra'],
+                ['apt-get', 'install', '-y', 'tesseract-ocr-eng'],
+                ['apt-get', 'install', '-y', 'poppler-utils']
+            ]
+            
+            for cmd in commands:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    print(f"✅ {' '.join(cmd)} - succès")
+                else:
+                    print(f"❌ {' '.join(cmd)} - échec: {result.stderr}")
+                    
+        except Exception as e:
+            print(f"❌ Erreur installation Tesseract: {e}")
+    
+    def _configure_tesseract_path(self):
+        """Configure le chemin de Tesseract selon l'OS"""
+        try:
+            # Essayer différents chemins possibles
+            possible_paths = [
+                '/usr/bin/tesseract',
+                '/usr/local/bin/tesseract',
+                '/opt/homebrew/bin/tesseract'  # Pour macOS
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path):
+                    pytesseract.pytesseract.tesseract_cmd = path
+                    print(f"✅ Tesseract configuré: {path}")
+                    return
+            
+            # Si aucun chemin trouvé, essayer de trouver avec which
+            result = subprocess.run(['which', 'tesseract'], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                pytesseract.pytesseract.tesseract_cmd = result.stdout.strip()
+                print(f"✅ Tesseract trouvé via which: {result.stdout.strip()}")
+            else:
+                print("❌ Aucun chemin Tesseract valide trouvé")
+                # Utiliser une valeur par défaut
+                pytesseract.pytesseract.tesseract_cmd = 'tesseract'
+                
+        except Exception as e:
+            print(f"⚠️ Erreur configuration chemin Tesseract: {e}")
+    
+    def _extract_text_from_image(self, image_input) -> str:
+        """Extraction OCR améliorée avec prétraitement"""
+        try:
+            # Charger l'image
+            if isinstance(image_input, str):
+                image = cv2.imread(image_input)
+                if image is None:
+                    return f"Erreur: Impossible de charger l'image {image_input}"
+            else:
+                # Si c'est déjà un objet image PIL
+                image = cv2.cvtColor(np.array(image_input), cv2.COLOR_RGB2BGR)
+            
+            # Prétraitement de l'image
+            processed_image = self._preprocess_image(image)
+            
+            # Configuration OCR optimisée
+            custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?;:()-[]€$%/\|"'''
+            
+            # Essayer différentes langues
+            languages = ['fra+eng', 'fra', 'eng']
+            best_text = ""
+            
+            for lang in languages:
+                try:
+                    text = pytesseract.image_to_string(
+                        processed_image, 
+                        lang=lang, 
+                        config=custom_config
+                    )
+                    if len(text.strip()) > len(best_text.strip()):
+                        best_text = text
+                        print(f"✅ Texte extrait avec {lang}: {len(text)} caractères")
+                except Exception as e:
+                    print(f"⚠️ Erreur avec langue {lang}: {e}")
+                    continue
+            
+            return best_text.strip() if best_text.strip() else "Aucun texte détecté"
             
         except Exception as e:
-            print(f"⚠️ Erreur configuration Tesseract: {e}")
-        
-        # Parsers spécialisés par type de contenu
-        self.specialized_parsers = {
-            'budget': self._parse_budget_data,
-            'laboratoire': self._parse_lab_data,
-            'rh_laboratoire': self._parse_rh_data,
-            'voirie': self._parse_voirie_data,
-            'formation': self._parse_formation_data,
-            'tabular': self._parse_tabular_data_enhanced,
-            'legal': self._parse_legal_data,
-            'administrative': self._parse_administrative_data,
-        }
-        
-        # Détecteurs automatiques de type
-        self.content_detectors = [
-            self._detect_budget,
-            self._detect_formation,
-            self._detect_tabular,
-            self._detect_legal,
-            self._detect_administrative,
-            self._detect_rh_laboratoire
-        ]
+            return f"Erreur extraction OCR: {str(e)}"
     
+    def _preprocess_image(self, image):
+        """Prétraitement avancé pour améliorer la qualité OCR"""
+        try:
+            # Conversion en niveaux de gris
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = image
+            
+            # 1. Réduction du bruit
+            denoised = cv2.medianBlur(gray, 3)
+            
+            # 2. Amélioration du contraste (CLAHE)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            contrast_enhanced = clahe.apply(denoised)
+            
+            # 3. Seuillage multiple
+            _, binary_otsu = cv2.threshold(contrast_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # 4. Test des différentes méthodes
+            test_images = {
+                'otsu': binary_otsu,
+                'adaptive_gaussian': cv2.adaptiveThreshold(
+                    contrast_enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                    cv2.THRESH_BINARY, 11, 2
+                ),
+                'adaptive_mean': cv2.adaptiveThreshold(
+                    contrast_enhanced, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
+                    cv2.THRESH_BINARY, 11, 2
+                )
+            }
+            
+            # Trouver la meilleure image par test OCR rapide
+            best_image = binary_otsu
+            best_score = 0
+            
+            for name, test_img in test_images.items():
+                try:
+                    test_text = pytesseract.image_to_string(test_img, config='--psm 6')
+                    score = len(test_text.strip())
+                    if score > best_score:
+                        best_score = score
+                        best_image = test_img
+                except:
+                    continue
+            
+            return best_image
+            
+        except Exception as e:
+            print(f"❌ Erreur prétraitement: {e}")
+            return image
+
     def process_file(self, filepath: str, data_type: str = 'auto') -> Dict[str, Any]:
         """Traite le fichier avec détection automatique ou manuelle du type"""
         # Extraction OCR
@@ -708,73 +837,41 @@ class OCRProcessor:
             return self._extract_text_from_image(filepath)
     
     def _extract_text_from_image(self, image_path) -> str:
-        """Extrait le texte d'une image avec prétraitement amélioré"""
+        """Extraction OCR avec prétraitement et configuration améliorés"""
         try:
             # Charger l'image
             if isinstance(image_path, str):
                 image = cv2.imread(image_path)
-                if image is None:
-                    return "Erreur: Impossible de charger l'image"
             else:
                 image = cv2.cvtColor(np.array(image_path), cv2.COLOR_RGB2BGR)
+
+            # 1. PRÉTRAITEMENT DE L'IMAGE
+            # Conversion en niveaux de gris
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            print(f"📐 Dimensions image: {image.shape}")
+            # Réduction du bruit
+            denoised = cv2.medianBlur(gray, 3)
             
-            # Redimensionner si trop petite (au moins 300px de hauteur)
-            height, width = image.shape[:2]
-            if height < 300:
-                scale_factor = 300 / height
-                new_width = int(width * scale_factor)
-                image = cv2.resize(image, (new_width, 300), interpolation=cv2.INTER_CUBIC)
-                print(f"🔄 Image redimensionnée: {image.shape}")
+            # Seuillage automatique (Otsu)
+            _, binary_image = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # Prétraitement amélioré
-            processed_image = self._preprocess_image_enhanced(image)
-            
-            # Configurations Tesseract à essayer
-            configs = [
-                '--oem 3 --psm 6 -l fra+eng',  # Par défaut
-                '--oem 3 --psm 3 -l fra+eng',  # Page entière sans segmentation
-                '--oem 3 --psm 4 -l fra+eng',  # Colonne unique de texte
-                '--oem 3 --psm 8 -l fra+eng',  # Mot unique
-                '--oem 3 --psm 11 -l fra+eng', # Sparse text
-            ]
-            
+            # 2. CONFIGURATION ET OCR
+            # Essayer différents modes de segmentation
+            configs = ['--psm 6', '--psm 11', '--psm 3']
             best_text = ""
-            best_config = ""
-            
             for config in configs:
-                try:
-                    text = pytesseract.image_to_string(processed_image, config=config)
-                    print(f"🔍 Config {config}: {len(text.strip())} caractères")
-                    
-                    if len(text.strip()) > len(best_text.strip()):
-                        best_text = text
-                        best_config = config
-                except Exception as e:
-                    print(f"⚠️ Erreur config {config}: {e}")
-                    continue
-            
-            print(f"✅ Meilleure config: {best_config}")
-            print(f"✅ Texte extrait: {len(best_text)} caractères")
-            
-            if best_text.strip():
-                return best_text
-            else:
-                # Essayer avec l'image originale en dernier recours
-                try:
-                    fallback_text = pytesseract.image_to_string(image, config='--oem 3 --psm 6 -l fra+eng')
-                    print(f"🔄 Fallback texte: {len(fallback_text.strip())} caractères")
-                    return fallback_text
-                except:
-                    return "Aucun texte détecté dans l'image"
-                
+                current_text = pytesseract.image_to_string(binary_image, config=f'{config} -l fra+eng')
+                if len(current_text.strip()) > len(best_text.strip()):
+                    best_text = current_text
+                    print(f"✅ Texte extrait avec {config}: {len(current_text)} caractères")
+
+            return best_text if best_text.strip() else "Aucun texte détecté dans l'image après prétraitement."
+
         except Exception as e:
-            print(f"❌ Erreur extraction OCR: {e}")
             return f"Erreur lors de l'extraction OCR: {e}"
     
     def _preprocess_image_enhanced(self, image):
-        """Améliore la qualité de l'image pour l'OCR avec plusieurs techniques"""
+        """Prétraitement amélioré pour l'OCR"""
         try:
             # Convertir en niveaux de gris
             if len(image.shape) == 3:
@@ -782,45 +879,59 @@ class OCRProcessor:
             else:
                 gray = image
             
-            # Dénoniser l'image
+            # 1. Débruitage
             denoised = cv2.medianBlur(gray, 3)
             
-            # Plusieurs techniques de seuillage
-            # 1. Seuillage adaptatif gaussien
+            # 2. Amélioration du contraste (CLAHE)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+            contrast_enhanced = clahe.apply(denoised)
+            
+            # 3. Seuillage adaptatif multiple
+            # Méthode 1: Gaussian
             thresh1 = cv2.adaptiveThreshold(
-                denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                cv2.THRESH_BINARY, 11, 2
+                contrast_enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                cv2.THRESH_BINARY, 15, 5
             )
             
-            # 2. Seuillage d'Otsu
-            _, thresh2 = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # Méthode 2: Mean
+            thresh2 = cv2.adaptiveThreshold(
+                contrast_enhanced, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                cv2.THRESH_BINARY, 15, 5
+            )
             
-            # 3. Amélioration du contraste
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            contrast_enhanced = clahe.apply(denoised)
+            # Méthode 3: Otsu
             _, thresh3 = cv2.threshold(contrast_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # Essayer les différentes versions et choisir la meilleure
-            images_to_try = [thresh1, thresh2, thresh3, denoised]
+            # 4. Test rapide pour trouver la meilleure méthode
+            images_to_test = [
+                ('gaussian', thresh1),
+                ('mean', thresh2), 
+                ('otsu', thresh3),
+                ('original', gray)
+            ]
             
-            # Tester rapidement chaque version
-            best_image = thresh1
-            best_text_length = 0
+            best_image = gray
+            best_score = 0
             
-            for img in images_to_try:
+            for name, img in images_to_test:
                 try:
-                    text = pytesseract.image_to_string(img, config='--oem 3 --psm 6 -l fra+eng')
-                    if len(text.strip()) > best_text_length:
-                        best_text_length = len(text.strip())
+                    # Test OCR rapide
+                    text = pytesseract.image_to_string(img, config='--psm 6 -l fra')
+                    score = len(text.strip())
+                    
+                    if score > best_score:
+                        best_score = score
                         best_image = img
-                except:
+                        print(f"✅ Meilleure méthode: {name} - {score} caractères")
+                        
+                except Exception as e:
+                    print(f"⚠️ Erreur méthode {name}: {e}")
                     continue
             
-            print(f"✅ Texte détecté: {best_text_length} caractères")
             return best_image
             
         except Exception as e:
-            print(f"❌ Erreur prétraitement image: {e}")
+            print(f"❌ Erreur prétraitement: {e}")
             return image
 
     def _preprocess_image(self, image):
@@ -888,7 +999,7 @@ class OCRProcessor:
         if len(line) > 150:
             return False
         
-        # Titres en majuscules
+# Titres en majuscules
         if line.isupper() and len(line) > 5:
             return True
         
