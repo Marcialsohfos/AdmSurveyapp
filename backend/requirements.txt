@@ -16,4 +16,3 @@ gunicorn==21.2.0
 PyPDF2==3.0.1
 tesseract-ocr==5.5.1
 tesseract-ocr-fra==5.5.1  
-poppler-utils=25.10.0
