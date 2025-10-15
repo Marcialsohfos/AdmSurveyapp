@@ -197,7 +197,7 @@ def test_docker():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))  # ← 10000 au lieu de 5000
     # Création des dossiers nécessaires
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs('converted', exist_ok=True)
@@ -205,4 +205,3 @@ if __name__ == '__main__':
     
     print(f"🚀 SourceAdApp démarré sur le port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
-    
