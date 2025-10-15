@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.11.9
 
 # Installer les dépendances système incluant Tesseract
 RUN apt-get update && apt-get install -y \
